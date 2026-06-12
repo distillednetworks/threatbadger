@@ -1,0 +1,31 @@
+services:
+  threatbadger:
+    build: .
+    container_name: threatbadger
+    restart: unless-stopped
+
+    volumes:
+      - threatbadger-data:/var/www/html/data
+
+    environment:
+      # Apache server name — set to your actual domain in production
+      APACHE_SERVER_NAME: localhost
+
+    ports:
+      - 80:80
+
+    networks:
+      - threatbadger
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/api/health.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  threatbadger-data:
+
+networks:
+  threatbadger:
