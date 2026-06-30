@@ -2,7 +2,7 @@
 
 <img alt="ThreatBadger Logo" src="/webapp/assets/img/logo-large.png" width="200px" align="center"/>
 
-Interface to query multiple OSINT sources and internal data sources when researching IOC or IOAs. Currently IPv4, IPv6m Domains, Emails, and Hashes are supported against public OSINT sources as well as internal MISP and ElasticSearch databases.
+Interface to query multiple OSINT sources and internal data sources when researching IOC or IOAs. Currently IPv4, IPv6 Domains, Emails, and Hashes are supported against public OSINT sources as well as internal MISP and ElasticSearch databases.
 
 You can also connect to an ElasticSearch SIEM to search your logs for any IOC/IOAs.
 
