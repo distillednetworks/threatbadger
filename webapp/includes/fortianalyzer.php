@@ -254,9 +254,13 @@ function faz_search_logs(array $cfg, ?string $session, string $logtype, string $
         'time-order'     => 'desc',
         'case-sensitive' => false,
     ];
-    if (!empty($cfg['device'])) {
-        $data['device'] = [['devname' => $cfg['device']]];
-    }
+    // FortiAnalyzer's LogView search expects an explicit "device" entry —
+    // omitting it entirely triggers "Device type is unknown" on some builds.
+    // "All_Devices" is FortiAnalyzer's own reserved devid for "search every
+    // managed device"; a configured device name overrides it.
+    $data['device'] = !empty($cfg['device'])
+        ? [['devname' => $cfg['device']]]
+        : [['devid' => 'All_Devices']];
 
     $adomPath = '/logview/adom/' . rawurlencode($cfg['adom']);
 
