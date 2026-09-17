@@ -128,16 +128,31 @@ function faz_resolve_time_range(string $from, string $to): array {
 }
 
 // ─── JSON-RPC transport ────────────────────────────────────────
-/** Raw JSON-RPC call — returns the full decoded HTTP response. */
-function faz_raw_call(string $method, string $url, array $data, array $cfg, ?string $session): array {
-    $params = ['url' => $url];
-    if (!empty($data)) $params['data'] = $data;
+/**
+ * Raw JSON-RPC call — returns the full decoded HTTP response.
+ *
+ * $flatten controls the shape of the params object, since FortiAnalyzer's
+ * own modules disagree on this: session/config endpoints (e.g. login) take
+ * their arguments nested under "data", while the LogView search endpoints
+ * (per Fortinet's own tested support article) expect fields flattened as
+ * direct siblings of "url", plus an explicit "apiver": 3.
+ */
+function faz_raw_call(string $method, string $url, array $fields, array $cfg, ?string $session, bool $flatten = false): array {
+    // Some FortiAnalyzer builds key off "url", others off "uri" — send both.
+    $params = ['url' => $url, 'uri' => $url];
+    if ($flatten) {
+        $params['apiver'] = 3;
+        $params = array_merge($params, $fields);
+    } elseif (!empty($fields)) {
+        $params['data'] = $fields;
+    }
 
     $payload = [
         'method'  => $method,
         'params'  => [$params],
         'session' => $session,
         'id'      => 1,
+        'jsonrpc' => '2.0',
     ];
 
     $headers = ['Content-Type' => 'application/json'];
@@ -154,25 +169,49 @@ function faz_raw_call(string $method, string $url, array $data, array $cfg, ?str
     );
 }
 
-/** JSON-RPC call that unwraps result[0], surfacing FortiAnalyzer's own error codes. */
-function faz_call(string $method, string $url, array $data, array $cfg, ?string $session): array {
-    $res = faz_raw_call($method, $url, $data, $cfg, $session);
+/**
+ * JSON-RPC call that unwraps FortiAnalyzer's response and surfaces its own
+ * error codes. Handles both response shapes seen across FortiAnalyzer
+ * versions/endpoints: "result" as a single-element array with status/data
+ * inside each element (older/generic), and "result" as a single object with
+ * "status" nested directly inside it (LogView with apiver 3).
+ */
+function faz_call(string $method, string $url, array $fields, array $cfg, ?string $session, bool $flatten = false): array {
+    $res = faz_raw_call($method, $url, $fields, $cfg, $session, $flatten);
 
     if (!is_array($res['data'] ?? null)) {
         return ['ok' => false, 'error' => $res['error'] ?? 'FortiAnalyzer connection failed'];
     }
 
-    $result = $res['data']['result'][0] ?? null;
-    if (!$result) {
+    $body = $res['data'];
+
+    if (isset($body['error'])) {
+        return ['ok' => false, 'error' => 'FortiAnalyzer: ' . ($body['error']['message'] ?? 'unknown error')];
+    }
+
+    $result = $body['result'] ?? null;
+    if ($result === null) {
         return ['ok' => false, 'error' => 'Unexpected FortiAnalyzer response'];
     }
 
-    $code = $result['status']['code'] ?? -1;
-    if ($code !== 0) {
-        return ['ok' => false, 'error' => 'FortiAnalyzer: ' . ($result['status']['message'] ?? "error code $code")];
+    $isList = function_exists('array_is_list')
+        ? array_is_list($result)
+        : ($result === [] || array_keys($result) === range(0, count($result) - 1));
+    $entry  = $isList ? ($result[0] ?? null) : $result;
+    if ($entry === null) {
+        return ['ok' => false, 'error' => 'Unexpected FortiAnalyzer response'];
     }
 
-    return ['ok' => true, 'data' => $result['data'] ?? [], 'raw' => $res['data']];
+    $status = $entry['status'] ?? null;
+    if (is_array($status) && ($status['code'] ?? 0) !== 0) {
+        return ['ok' => false, 'error' => 'FortiAnalyzer: ' . ($status['message'] ?? ('error code ' . $status['code']))];
+    }
+
+    // Older shape nests the payload under "data"; the flattened LogView
+    // shape returns the payload directly as the result object.
+    $data = $isList ? ($entry['data'] ?? $entry) : $entry;
+
+    return ['ok' => true, 'data' => $data, 'raw' => $body];
 }
 
 // ─── Session lifecycle ──────────────────────────────────────
@@ -209,10 +248,11 @@ function faz_get_session(array $cfg): array {
 // ─── Log search (two-step async) ───────────────────────────────
 function faz_search_logs(array $cfg, ?string $session, string $logtype, string $filter, string $time_from, string $time_to, int $limit, int $offset, ?string $apiLogtype = null): array {
     $data = [
-        'logtype'    => $apiLogtype ?? $logtype,
-        'filter'     => $filter,
-        'time-range' => ['start' => $time_from, 'end' => $time_to],
-        'time-order' => 'desc',
+        'logtype'        => $apiLogtype ?? $logtype,
+        'filter'         => $filter,
+        'time-range'     => ['start' => $time_from, 'end' => $time_to],
+        'time-order'     => 'desc',
+        'case-sensitive' => false,
     ];
     if (!empty($cfg['device'])) {
         $data['device'] = [['devname' => $cfg['device']]];
@@ -220,7 +260,7 @@ function faz_search_logs(array $cfg, ?string $session, string $logtype, string $
 
     $adomPath = '/logview/adom/' . rawurlencode($cfg['adom']);
 
-    $submit = faz_call('add', $adomPath . '/logsearch', $data, $cfg, $session);
+    $submit = faz_call('add', $adomPath . '/logsearch', $data, $cfg, $session, true);
     if (!$submit['ok']) return $submit;
 
     $tid = $submit['data']['tid'] ?? null;
@@ -232,23 +272,30 @@ function faz_search_logs(array $cfg, ?string $session, string $logtype, string $
     // this request indefinitely (~20s max).
     $polled = null;
     for ($i = 0; $i < 20; $i++) {
-        $poll = faz_call('get', $adomPath . "/logsearch/$tid", ['limit' => $limit, 'offset' => $offset], $cfg, $session);
+        $poll = faz_call('get', $adomPath . "/logsearch/$tid", ['limit' => $limit, 'offset' => $offset], $cfg, $session, true);
         if (!$poll['ok']) return $poll;
         $polled = $poll['data'];
-        if (($polled['status'] ?? '') === 'done' && (int)($polled['percentage'] ?? 0) >= 100) {
-            break;
-        }
+
+        $percentage = (int)($polled['percentage'] ?? 0);
+        $statusVal  = $polled['status'] ?? null; // string ("running"/"done") on some builds; status object already consumed by faz_call on others
+        $done = $percentage >= 100 && (!is_string($statusVal) || $statusVal === 'done');
+        if ($done) break;
+
         usleep(1000000); // 1s
     }
 
-    if (!$polled || ($polled['status'] ?? '') !== 'done') {
+    $finalPercentage = (int)($polled['percentage'] ?? 0);
+    if (!$polled || $finalPercentage < 100) {
         return ['ok' => false, 'error' => "FortiAnalyzer $logtype search timed out waiting for results"];
     }
 
+    $logs  = $polled['logs'] ?? $polled['data'] ?? [];
+    $total = $polled['total_lines'] ?? $polled['total-count'] ?? count($logs);
+
     return [
         'ok'    => true,
-        'logs'  => $polled['logs'] ?? [],
-        'total' => (int)($polled['total_lines'] ?? count($polled['logs'] ?? [])),
+        'logs'  => $logs,
+        'total' => (int)$total,
     ];
 }
 
