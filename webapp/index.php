@@ -160,7 +160,20 @@ $user      = $logged_in ? auth_user() : null;
     <!-- ══════════════ HUNT VIEW ══════════════ -->
     <div id="view-hunt" class="view">
       <h1 class="page-title">🎯 Hunt</h1>
-      <p class="page-sub">Search your log Elasticsearch cluster for any indicator across standard ECS fields — network, DNS, HTTP, file, process, and more</p>
+      <p class="page-sub" id="hunt-page-sub">Search your log Elasticsearch cluster for any indicator across standard ECS fields — network, DNS, HTTP, file, process, and more</p>
+
+      <!-- Log source -->
+      <div class="hunt-option-group" style="margin-bottom:14px">
+        <label class="hunt-option-label">Log Source</label>
+        <div class="hunt-source-toggle" id="hunt-source-toggle">
+          <div class="source-badge on selected" data-hunt-source="elasticsearch" onclick="huntSetSource('elasticsearch')" title="Search Elasticsearch">
+            <div class="dot"></div>Elasticsearch
+          </div>
+          <div class="source-badge on deselected" data-hunt-source="fortianalyzer" onclick="huntSetSource('fortianalyzer')" title="Search FortiAnalyzer">
+            <div class="dot"></div>FortiAnalyzer
+          </div>
+        </div>
+      </div>
 
       <!-- Search bar -->
       <div class="search-bar">
@@ -214,11 +227,33 @@ $user      = $logged_in ? auth_user() : null;
         </div>
 
         <!-- Index -->
-        <div class="hunt-option-group">
+        <div class="hunt-option-group" id="hunt-index-group">
           <label class="hunt-option-label">Index Pattern</label>
           <input type="text" id="hunt-index" class="form-input hunt-index-input"
             placeholder="logs-*"
             value="logs-*"
+            style="font-family:var(--mono);font-size:12px"
+            onkeydown="if(event.key==='Enter')doHunt()">
+        </div>
+
+        <!-- FortiAnalyzer ADOM -->
+        <div class="hunt-option-group" id="hunt-faz-adom-group" style="display:none">
+          <label class="hunt-option-label">ADOM</label>
+          <input type="text" id="hunt-faz-adom" class="form-input hunt-index-input"
+            placeholder="root"
+            value="root"
+            maxlength="64"
+            style="font-family:var(--mono);font-size:12px"
+            onkeydown="if(event.key==='Enter')doHunt()">
+        </div>
+
+        <!-- FortiAnalyzer Device -->
+        <div class="hunt-option-group" id="hunt-faz-device-group" style="display:none">
+          <label class="hunt-option-label">Device</label>
+          <input type="text" id="hunt-faz-device" class="form-input hunt-index-input"
+            placeholder="all devices"
+            value=""
+            maxlength="128"
             style="font-family:var(--mono);font-size:12px"
             onkeydown="if(event.key==='Enter')doHunt()">
         </div>
@@ -239,7 +274,7 @@ $user      = $logged_in ? auth_user() : null;
       <div id="hunt-empty" class="empty-state">
         <div class="empty-icon">🎯</div>
         <div>Enter an indicator to hunt for log matches</div>
-        <div class="empty-sub">Searches standard ECS fields — source.ip · destination.ip · dns.question.name · url.domain · file.hash.* · and more</div>
+        <div class="empty-sub" id="hunt-empty-sub">Searches standard ECS fields — source.ip · destination.ip · dns.question.name · url.domain · file.hash.* · and more</div>
       </div>
 
       <!-- Results -->

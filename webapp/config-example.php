@@ -7,7 +7,7 @@
 
 // ─── Application ─────────────────────────────────────────────
 define('APP_NAME',    'ThreatBadger');
-define('APP_VERSION', '2.0');
+define('APP_VERSION', '2.1');
 define('APP_ENV',     'production'); // 'development' | 'production'
 
 // ─── Session  ────────────────────────────────────────────────
@@ -186,6 +186,23 @@ define('HUNT_ELASTIC_URL',     'https://your-hunt-elastic:9200');
 define('HUNT_ELASTIC_API_KEY', 'your-base64-api-key');
 define('HUNT_ELASTIC_INDEX',   'logs-*');   // default, overridable per-search
 define('HUNT_KIBANA_URL',      '');         // optional, enables ↗ Kibana links on hits
+
+// ─── FortiAnalyzer — Hunt ─────────────────────────────────────
+// Lets the Hunt page query a FortiAnalyzer instance instead of Elasticsearch.
+// IPv4/IPv6 indicators search Traffic + VPN logs (source/destination IP, or
+// VPN remote/assigned IP). Domain indicators search DNS + Web Filter logs.
+define('FORTIANALYZER_URL',        '');      // e.g. https://faz.yourorg.local
+define('FORTIANALYZER_ADOM',       'root');  // Administrative Domain to search
+// Preferred: a REST API access token for a dedicated API admin (never expires,
+// no session management). Leave blank to fall back to username/password below.
+define('FORTIANALYZER_API_KEY',    '');
+// Fallback: session-based login. Only used when FORTIANALYZER_API_KEY is blank.
+define('FORTIANALYZER_USERNAME',   '');
+define('FORTIANALYZER_PASSWORD',   '');
+// Optional: restrict searches to one managed device (devname). Leave blank
+// to search across all devices in the ADOM.
+define('FORTIANALYZER_DEVICE',     '');
+define('FORTIANALYZER_VERIFY_SSL', true);    // set false only for self-signed labs
 
 // ───
 // ─── History Setup ────────────────────────────────────────────────────

@@ -7,6 +7,7 @@
 // ============================================================
 
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/fortianalyzer.php';
 
 ts_session_start();
 header('Content-Type: application/json');
@@ -22,12 +23,45 @@ $from      = max(0, (int)($body['from'] ?? 0));
 $size      = min(100, max(1, (int)($body['size'] ?? 25)));
 $time_from = trim($body['time_from'] ?? 'now-30d');   // ES date math or ISO 8601
 $time_to   = trim($body['time_to']   ?? 'now');
+$source    = strtolower(trim($body['source'] ?? 'elasticsearch'));
+$faz_adom   = trim($body['adom']   ?? '');
+$faz_device = trim($body['device'] ?? '');
 
 if (empty($indicator)) json_error('indicator is required');
+if (!in_array($source, ['elasticsearch', 'fortianalyzer'], true)) {
+    json_error('Invalid source. Must be "elasticsearch" or "fortianalyzer".');
+}
 
 $type = detect_type($indicator);
 if (!$type) json_error('Could not detect indicator type. Supported: IPv4, IPv6, Domain, Email, MD5, SHA-1, SHA-256');
 
+// ─── FortiAnalyzer path ─────────────────────────────────────────
+if ($source === 'fortianalyzer') {
+    if (!in_array($type, ['IPv4 Address', 'IPv6 Address', 'Domain'], true)) {
+        json_error("FortiAnalyzer hunt supports IPv4, IPv6, and Domain indicators only (got: $type)");
+    }
+
+    $result = fortianalyzer_hunt($indicator, $type, $time_from, $time_to, $from, $size, $faz_adom, $faz_device);
+    if (!$result['ok']) {
+        json_error($result['error'], 502);
+    }
+
+    echo json_encode([
+        'indicator' => $indicator,
+        'type'      => $type,
+        'index'     => 'FortiAnalyzer: ' . implode('+', $result['logtypes']) . ' (adom=' . $result['adom'] . ($result['device'] ? ', device=' . $result['device'] : '') . ')',
+        'time_from' => $result['time_from'],
+        'time_to'   => $result['time_to'],
+        'total'     => $result['total'],
+        'from'      => $from,
+        'size'      => $size,
+        'took_ms'   => null,
+        'hits'      => $result['hits'],
+    ]);
+    exit;
+}
+
+// ─── Elasticsearch path ─────────────────────────────────────────
 // ─── Validate hunt config ─────────────────────────────────────
 $hunt_url = defined('HUNT_ELASTIC_URL') ? HUNT_ELASTIC_URL : '';
 $hunt_key = defined('HUNT_ELASTIC_API_KEY') ? HUNT_ELASTIC_API_KEY : '';

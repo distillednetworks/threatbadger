@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/sources.php';
+require_once __DIR__ . '/../includes/fortianalyzer.php';
 ts_session_start();
 header('Content-Type: application/json');
 if (!auth_check()) json_error('Not authenticated', 401);
@@ -23,6 +24,21 @@ if ($method === 'GET' && !$action) {
 
     // Include custom list config for settings page rendering
     $s['custom_lists'] = defined('CUSTOM_LISTS') ? CUSTOM_LISTS : [];
+
+    // FortiAnalyzer is configured via config.php constants (not the editable
+    // settings.json store) — surface it read-only, with secrets masked.
+    $faz_cfg = faz_config();
+    $s['fortianalyzer'] = [
+        'url'         => $faz_cfg['url'],
+        'adom'        => $faz_cfg['adom'],
+        'auth_mode'   => !empty($faz_cfg['api_key']) ? 'api_key' : (!empty($faz_cfg['username']) ? 'username_password' : 'none'),
+        'api_key'     => mask_key($faz_cfg['api_key']),
+        'username'    => $faz_cfg['username'],
+        'password_set'=> !empty($faz_cfg['password']),
+        'device'      => $faz_cfg['device'],
+        'verify_ssl'  => $faz_cfg['verify_ssl'],
+        'configured'  => faz_is_configured($faz_cfg),
+    ];
 
     // Include data directory diagnostics so the UI can surface permission errors
     $data_dir      = dirname(HISTORY_FILE);

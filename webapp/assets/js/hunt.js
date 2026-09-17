@@ -11,6 +11,7 @@ const Hunt = {
   indicator  : '',
   type       : null,
   index      : 'logs-*',
+  source     : 'elasticsearch',  // 'elasticsearch' | 'fortianalyzer'
   total      : 0,
   from       : 0,
   size       : 25,
@@ -22,12 +23,57 @@ const Hunt = {
   absTo      : null,
 };
 
+const HUNT_SOURCE_TEXT = {
+  elasticsearch: {
+    pageSub:  'Search your log Elasticsearch cluster for any indicator across standard ECS fields — network, DNS, HTTP, file, process, and more',
+    emptySub: 'Searches standard ECS fields — source.ip · destination.ip · dns.question.name · url.domain · file.hash.* · and more',
+  },
+  fortianalyzer: {
+    pageSub:  'Search a FortiAnalyzer instance for IPv4/IPv6 or Domain indicators',
+    emptySub: 'IPv4/IPv6 indicators search Traffic + VPN logs (source/destination IP, or VPN remote/assigned IP). Domains search DNS + Web Filter logs.',
+  },
+};
+
+// ─── Log source toggle ─────────────────────────────────────────
+function huntSetSource(source) {
+  if (source !== 'elasticsearch' && source !== 'fortianalyzer') return;
+  Hunt.source = source;
+
+  document.querySelectorAll('#hunt-source-toggle .source-badge').forEach(badge => {
+    const selected = badge.getAttribute('data-hunt-source') === source;
+    badge.classList.toggle('selected', selected);
+    badge.classList.toggle('deselected', !selected);
+  });
+
+  const indexGroup = document.getElementById('hunt-index-group');
+  if (indexGroup) indexGroup.style.display = source === 'elasticsearch' ? '' : 'none';
+
+  const adomGroup   = document.getElementById('hunt-faz-adom-group');
+  const deviceGroup = document.getElementById('hunt-faz-device-group');
+  const fazDisplay  = source === 'fortianalyzer' ? '' : 'none';
+  if (adomGroup)   adomGroup.style.display   = fazDisplay;
+  if (deviceGroup) deviceGroup.style.display = fazDisplay;
+
+  const text = HUNT_SOURCE_TEXT[source];
+  const pageSub  = document.getElementById('hunt-page-sub');
+  const emptySub = document.getElementById('hunt-empty-sub');
+  if (pageSub)  pageSub.textContent  = text.pageSub;
+  if (emptySub) emptySub.textContent = text.emptySub;
+
+  // Results from the previous source no longer apply — reset the view.
+  document.getElementById('hunt-error').style.display   = 'none';
+  document.getElementById('hunt-results').style.display = 'none';
+  document.getElementById('hunt-empty').style.display   = 'block';
+}
+
 // ─── Kick off a hunt ──────────────────────────────────────────
 async function doHunt(resetPage) {
   if (Hunt.loading) return;
 
   const q   = document.getElementById('hunt-input').value.trim();
   const idx = document.getElementById('hunt-index').value.trim() || 'logs-*';
+  const fazAdom   = document.getElementById('hunt-faz-adom').value.trim() || 'root';
+  const fazDevice = document.getElementById('hunt-faz-device').value.trim();
 
   if (!q) { huntShowError('Enter an indicator to hunt for.'); return; }
 
@@ -57,6 +103,9 @@ async function doHunt(resetPage) {
       body   : JSON.stringify({
         indicator  : q,
         index      : idx,
+        source     : Hunt.source,
+        adom       : fazAdom,
+        device     : fazDevice,
         from       : Hunt.from,
         size       : Hunt.size,
         time_from  : timeRange.from,
@@ -65,28 +114,8 @@ async function doHunt(resetPage) {
     });
     renderHuntResults(data);
   } catch(e) {
-    huntShowError(e.message || 'Hunt request failed. Check your Hunt Elasticsearch configuration.');
-  } finally {
-    Hunt.loading = false;
-    document.getElementById('hunt-loading').style.display = 'none';
-    document.getElementById('hunt-btn').disabled           = false;
-  }
-
-  try {
-    const data = await apiFetch('api/hunt.php', {
-      method : 'POST',
-      body   : JSON.stringify({
-        indicator  : q,
-        index      : idx,
-        from       : Hunt.from,
-        size       : Hunt.size,
-        time_from  : timeRange.from,
-        time_to    : timeRange.to,
-      }),
-    });
-    renderHuntResults(data);
-  } catch(e) {
-    huntShowError(e.message || 'Hunt request failed. Check your Hunt Elasticsearch configuration.');
+    const cfgHint = Hunt.source === 'fortianalyzer' ? 'FortiAnalyzer' : 'Hunt Elasticsearch';
+    huntShowError(e.message || `Hunt request failed. Check your ${cfgHint} configuration.`);
   } finally {
     Hunt.loading = false;
     document.getElementById('hunt-loading').style.display = 'none';

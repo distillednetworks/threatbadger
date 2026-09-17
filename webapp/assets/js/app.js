@@ -1136,6 +1136,48 @@ function renderCustomListSettings(lists) {
   </div>`;
 }
 
+function renderFortiAnalyzerSettings(faz) {
+  if (!faz) return '';
+
+  const badge = faz.configured
+    ? `<span style="font-size:12px;color:var(--green)">✓ Configured</span>`
+    : `<span style="font-size:12px;color:var(--muted)">Not configured</span>`;
+
+  const authLabel = { api_key: 'API Key', username_password: 'Username / Password', none: 'Not set' }[faz.auth_mode] || 'Not set';
+  const notSet    = '<span style="color:var(--dim)">— not set —</span>';
+
+  const row = (label, value) => `
+    <div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span style="min-width:190px;color:var(--muted)">${esc(label)}</span>
+      <span style="font-family:var(--mono);color:var(--text);word-break:break-all">${value}</span>
+    </div>`;
+
+  const rows = [
+    row('FORTIANALYZER_URL',         faz.url      ? esc(faz.url)      : notSet),
+    row('FORTIANALYZER_ADOM',        esc(faz.adom || 'root')),
+    row('Auth mode',                 esc(authLabel)),
+    row('FORTIANALYZER_API_KEY',     faz.api_key  ? esc(faz.api_key)  : notSet),
+    row('FORTIANALYZER_USERNAME',    faz.username ? esc(faz.username) : notSet),
+    row('FORTIANALYZER_PASSWORD',    faz.password_set ? '•••• (set)'  : notSet),
+    row('FORTIANALYZER_DEVICE',      faz.device   ? esc(faz.device)   : '<span style="color:var(--dim)">all devices</span>'),
+    row('FORTIANALYZER_VERIFY_SSL',  faz.verify_ssl ? 'true' : 'false'),
+  ].join('');
+
+  return `<div class="settings-source-card">
+    <div class="settings-card-header">
+      <div class="settings-card-title">
+        <div class="settings-icon" style="background:#ee2e2415">🛡️</div>
+        <div>
+          <div class="settings-name">FortiAnalyzer</div>
+          <div class="settings-desc">Hunt page log source — edit <code>config.php</code> to modify these values</div>
+        </div>
+      </div>
+      ${badge}
+    </div>
+    <div style="padding:4px 0 0">${rows}</div>
+  </div>`;
+}
+
 function renderSettingsPanels() {
   const wrap = document.getElementById('settings-panels');
   if (!wrap) return;
@@ -1183,6 +1225,9 @@ function renderSettingsPanels() {
   // Append Custom Lists section
   const customLists = App.settings?.custom_lists || [];
   wrap.innerHTML += renderCustomListSettings(customLists);
+
+  // Append FortiAnalyzer section (read-only, sourced from config.php)
+  wrap.innerHTML += renderFortiAnalyzerSettings(App.settings?.fortianalyzer);
 }
 
 function patchSetting(source, field, value) {
